@@ -1,0 +1,63 @@
+from __future__ import annotations
+
+import hashlib
+import hmac
+import os
+import re
+import secrets
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+
+EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def sanitize_text(value: str, max_length: int = 255) -> str:
+    cleaned = " ".join((value or "").strip().split())
+    return cleaned[:max_length]
+
+
+def sanitize_multiline(value: str, max_length: int = 2500) -> str:
+    lines = [(line or "").strip() for line in (value or "").splitlines()]
+    cleaned = "\n".join(line for line in lines if line)
+    return cleaned[:max_length]
+
+
+def validate_email(value: str) -> bool:
+    return bool(EMAIL_RE.match((value or "").strip()))
+
+
+def hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
+    raw_salt = salt or secrets.token_hex(16)
+    derived = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        raw_salt.encode("utf-8"),
+        120_000,
+    )
+    return derived.hex(), raw_salt
+
+
+def verify_password(password: str, expected_hash: str, salt: str) -> bool:
+    calculated, _ = hash_password(password, salt=salt)
+    return hmac.compare_digest(calculated, expected_hash)
+
+
+def generate_session_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def generate_document_hash(file_path: str | Path) -> str:
+    digest = hashlib.sha256()
+    with Path(file_path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(8192), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def build_lockout_expiry(minutes: int) -> datetime:
+    return utc_now() + timedelta(minutes=minutes)

@@ -1,0 +1,41 @@
+SecureDesk/
+|-- main.py
+|-- conexion.py
+|-- requirements.txt
+|-- README.md
+|-- llaveKey.json
+|-- estructura_proyecto.txt
+|-- estructura_firestore.txt
+|-- docs/
+|-- app/
+|   |-- __init__.py
+|   |-- core/
+|   |   |-- __init__.py
+|   |   |-- config.py
+|   |   |-- firebase.py
+|   |   |-- security.py
+|   |   |-- session.py
+|   |-- models/
+|   |   |-- __init__.py
+|   |   |-- entities.py
+|   |-- services/
+|   |   |-- __init__.py
+|   |   |-- audit_service.py
+|   |   |-- auth_service.py
+|   |   |-- user_service.py
+|   |   |-- task_service.py
+|   |   |-- document_service.py
+|   |-- ui/
+|   |   |-- __init__.py
+|   |   |-- app.py
+|   |   |-- theme.py
+|   |   |-- components/
+|   |   |   |-- __init__.py
+|   |   |   |-- sidebar.py
+|   |   |-- views/
+|   |   |   |-- __init__.py
+|   |   |   |-- login_view.py
+|   |   |   |-- first_access_view.py
+|   |   |   |-- dashboard_view.py
+|   |-- utils/
+|       |-- __init__.py

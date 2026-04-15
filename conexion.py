@@ -1,10 +1,6 @@
-import firebase_admin
-from firebase_admin import credentials
-from firebase_admin import firestore
+from app.core.firebase import get_firestore_client
 
-cred = credentials.Certificate(r"C:\Users\Jess\OneDrive\Desktop\SecureDesk\llaveKey.json")
-firebase_admin.initialize_app(cred)
 
-db = firestore.client()
-
-print("Conexión exitosa con Firebase")
+if __name__ == "__main__":
+    db = get_firestore_client()
+    print("Conexion exitosa con Firebase:", db)

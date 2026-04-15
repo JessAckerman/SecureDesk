@@ -1,0 +1,44 @@
+Coleccion: usuarios
+- username: string
+- full_name: string
+- email: string
+- role: string
+- status: string
+- password_hash: string
+- password_salt: string
+- failed_attempts: number
+- blocked_until: timestamp|null
+- must_change_password: boolean
+- accepted_policies: boolean
+- accepted_policies_at: timestamp|null
+- created_at: timestamp
+- updated_at: timestamp
+- last_login: timestamp|null
+
+Coleccion: tareas
+- title: string
+- description: string
+- priority: string
+- status: string
+- due_date: string
+- assigned_to: string
+- evidence_count: number
+- created_at: timestamp
+- updated_at: timestamp
+
+Coleccion: documentos
+- title: string
+- category: string
+- related_task_id: string
+- file_path: string
+- integrity_hash: string
+- notes: string
+- created_at: timestamp
+- updated_at: timestamp
+
+Coleccion: auditoria
+- event_type: string
+- actor: string
+- description: string
+- metadata: map
+- created_at: timestamp
