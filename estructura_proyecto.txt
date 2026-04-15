@@ -6,6 +6,8 @@ SecureDesk/
 |-- llaveKey.json
 |-- estructura_proyecto.txt
 |-- estructura_firestore.txt
+|-- assets/
+|   |-- logo_securedesk.svg
 |-- docs/
 |-- app/
 |   |-- __init__.py
@@ -31,6 +33,7 @@ SecureDesk/
 |   |   |-- theme.py
 |   |   |-- components/
 |   |   |   |-- __init__.py
+|   |   |   |-- logo_badge.py
 |   |   |   |-- sidebar.py
 |   |   |-- views/
 |   |   |   |-- __init__.py

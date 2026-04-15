@@ -3,6 +3,8 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 
+from app.ui.components.logo_badge import LogoBadge
+
 
 class Sidebar(ttk.Frame):
     def __init__(self, parent, on_navigate, on_logout, session) -> None:
@@ -13,6 +15,10 @@ class Sidebar(ttk.Frame):
         self._build()
 
     def _build(self) -> None:
+        logo_wrap = tk.Frame(self, bg="#10324A")
+        logo_wrap.pack(anchor="w", pady=(0, 8))
+        LogoBadge(logo_wrap, size=58, bg="#10324A").pack(side="left", padx=(0, 10))
+
         ttk.Label(self, text="SecureDesk", style="SidebarTitle.TLabel").pack(
             anchor="w", pady=(0, 6)
         )

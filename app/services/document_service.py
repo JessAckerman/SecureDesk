@@ -5,6 +5,7 @@ from typing import Any
 
 from app.core.security import (
     generate_document_hash,
+    sign_document_hash,
     sanitize_multiline,
     sanitize_text,
     utc_now,
@@ -34,14 +35,33 @@ class DocumentService:
         notes: str,
     ) -> None:
         clean_path = sanitize_text(file_path, 260)
-        integrity_hash = generate_document_hash(clean_path) if clean_path and Path(clean_path).exists() else ""
+        clean_title = sanitize_text(title, 120)
+        clean_category = sanitize_text(category, 60)
+        clean_task_id = sanitize_text(related_task_id, 80)
+        clean_notes = sanitize_multiline(notes, 1200)
+
+        if not clean_title:
+            raise ValueError("Debes capturar el titulo del documento.")
+        if not clean_category:
+            raise ValueError("Debes seleccionar una categoria.")
+        if not clean_path:
+            raise ValueError("Debes seleccionar un archivo.")
+        if not Path(clean_path).exists():
+            raise ValueError("El archivo seleccionado no existe.")
+
+        integrity_hash = generate_document_hash(clean_path)
+        digital_signature, signer_identity = sign_document_hash(integrity_hash)
+
         payload = {
-            "title": sanitize_text(title, 120),
-            "category": sanitize_text(category, 60),
-            "related_task_id": sanitize_text(related_task_id, 80),
+            "title": clean_title,
+            "category": clean_category,
+            "related_task_id": clean_task_id,
             "file_path": clean_path,
             "integrity_hash": integrity_hash,
-            "notes": sanitize_multiline(notes, 1200),
+            "digital_signature": digital_signature,
+            "signed_by": signer_identity,
+            "signature_algorithm": "RSA-SHA256",
+            "notes": clean_notes,
             "created_at": utc_now(),
             "updated_at": utc_now(),
         }
@@ -49,6 +69,10 @@ class DocumentService:
         self.audit_service.log_event(
             "register_document",
             actor,
-            f"Se registró el documento {payload['title']}.",
-            {"category": payload["category"], "integrity_hash": integrity_hash},
+            f"Se registro el documento {payload['title']} con firma digital.",
+            {
+                "category": payload["category"],
+                "integrity_hash": integrity_hash,
+                "signature_algorithm": payload["signature_algorithm"],
+            },
         )

@@ -62,6 +62,18 @@ def apply_theme(root) -> None:
         font=("Segoe UI", 10),
     )
     style.configure(
+        "ErrorFeedback.TLabel",
+        background=COLORS["panel"],
+        foreground=COLORS["danger"],
+        font=("Segoe UI", 9),
+    )
+    style.configure(
+        "SuccessFeedback.TLabel",
+        background=COLORS["panel"],
+        foreground=COLORS["success"],
+        font=("Segoe UI", 9),
+    )
+    style.configure(
         "Sidebar.TLabel",
         background=COLORS["navy"],
         foreground="white",
@@ -114,5 +126,35 @@ def apply_theme(root) -> None:
         foreground=COLORS["text"],
         font=("Segoe UI Semibold", 10),
         relief="flat",
+    )
+    style.configure(
+        "Valid.TEntry",
+        fieldbackground="#F0FFF4",
+        bordercolor=COLORS["success"],
+        lightcolor=COLORS["success"],
+        darkcolor=COLORS["success"],
+    )
+    style.configure(
+        "Invalid.TEntry",
+        fieldbackground="#FFF5F5",
+        bordercolor=COLORS["danger"],
+        lightcolor=COLORS["danger"],
+        darkcolor=COLORS["danger"],
+    )
+    style.configure(
+        "Valid.TCombobox",
+        fieldbackground="#F0FFF4",
+        bordercolor=COLORS["success"],
+        lightcolor=COLORS["success"],
+        darkcolor=COLORS["success"],
+        arrowsize=16,
+    )
+    style.configure(
+        "Invalid.TCombobox",
+        fieldbackground="#FFF5F5",
+        bordercolor=COLORS["danger"],
+        lightcolor=COLORS["danger"],
+        darkcolor=COLORS["danger"],
+        arrowsize=16,
     )
     style.map("Treeview.Heading", background=[("active", COLORS["sky"])])

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from tkinter import StringVar, ttk
 
+from app.ui.components.logo_badge import LogoBadge
+
 
 class LoginView(ttk.Frame):
     def __init__(self, parent, on_login) -> None:
@@ -16,17 +18,22 @@ class LoginView(ttk.Frame):
 
     def _build(self) -> None:
         panel = ttk.Frame(self, style="Panel.TFrame", padding=36)
-        panel.place(relx=0.5, rely=0.5, anchor="center", width=480, height=360)
+        panel.place(relx=0.5, rely=0.5, anchor="center", width=480)
+
+        logo_wrap = ttk.Frame(panel, style="Panel.TFrame")
+        logo_wrap.pack(anchor="center", pady=(0, 14))
+        LogoBadge(logo_wrap, size=78, bg="#FFFFFF").pack()
 
         ttk.Label(panel, text="Acceso Seguro", style="PanelTitle.TLabel").pack(
-            anchor="w", pady=(0, 8)
+            anchor="center", pady=(0, 8)
         )
         ttk.Label(
             panel,
             text="Solo las cuentas creadas por un administrador pueden ingresar al sistema.",
             style="PanelText.TLabel",
             wraplength=360,
-        ).pack(anchor="w", pady=(0, 24))
+            justify="center",
+        ).pack(anchor="center", pady=(0, 24))
 
         ttk.Label(panel, text="Usuario", style="PanelText.TLabel").pack(anchor="w")
         ttk.Entry(panel, textvariable=self.username_var, font=("Segoe UI", 11)).pack(
@@ -53,7 +60,7 @@ class LoginView(ttk.Frame):
             text="Iniciar sesion",
             style="Primary.TButton",
             command=self._submit_login,
-        ).pack(fill="x")
+        ).pack(fill="x", pady=(8, 0))
 
     def _submit_login(self) -> None:
         self.on_login(self.username_var.get(), self.password_var.get())

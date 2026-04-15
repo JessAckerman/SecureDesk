@@ -5,9 +5,15 @@ import hmac
 import os
 import re
 import secrets
+from base64 import b64encode
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
+import json
 from pathlib import Path
 
+from google.oauth2 import service_account
+
+from app.core.config import CONFIG
 
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 
@@ -57,6 +63,26 @@ def generate_document_hash(file_path: str | Path) -> str:
         for chunk in iter(lambda: handle.read(8192), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+@lru_cache(maxsize=1)
+def _load_service_account_info() -> dict:
+    with Path(CONFIG.firebase_credentials).open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+@lru_cache(maxsize=1)
+def _load_signing_credentials():
+    return service_account.Credentials.from_service_account_file(
+        str(CONFIG.firebase_credentials)
+    )
+
+
+def sign_document_hash(document_hash: str) -> tuple[str, str]:
+    credentials = _load_signing_credentials()
+    signed = credentials.signer.sign(document_hash.encode("utf-8"))
+    info = _load_service_account_info()
+    return b64encode(signed).decode("utf-8"), info.get("client_email", "securedesk")
 
 
 def build_lockout_expiry(minutes: int) -> datetime:
