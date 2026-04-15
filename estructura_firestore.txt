@@ -1,44 +1,140 @@
-Coleccion: usuarios
-- username: string
-- full_name: string
-- email: string
-- role: string
-- status: string
-- password_hash: string
-- password_salt: string
-- failed_attempts: number
-- blocked_until: timestamp|null
-- must_change_password: boolean
-- accepted_policies: boolean
-- accepted_policies_at: timestamp|null
-- created_at: timestamp
-- updated_at: timestamp
-- last_login: timestamp|null
+BASE DE DATOS: Cloud Firestore
+PROYECTO: SecureDesk
 
-Coleccion: tareas
-- title: string
-- description: string
-- priority: string
-- status: string
-- due_date: string
-- assigned_to: string
-- evidence_count: number
-- created_at: timestamp
-- updated_at: timestamp
+-------------------------------------
+COLECCIÓN: usuarios
+-------------------------------------
 
-Coleccion: documentos
-- title: string
-- category: string
-- related_task_id: string
-- file_path: string
-- integrity_hash: string
-- notes: string
-- created_at: timestamp
-- updated_at: timestamp
+Descripción:
+Almacena la información de los usuarios del sistema.
 
-Coleccion: auditoria
-- event_type: string
-- actor: string
-- description: string
-- metadata: map
-- created_at: timestamp
+Campos:
+
+id_usuario          : string
+nombre              : string
+correo              : string
+rol                 : string (admin, supervisor, empleado)
+activo              : boolean
+intentos_fallidos   : number
+bloqueado_hasta     : timestamp
+ultimo_login        : timestamp
+mfa_habilitado      : boolean
+fecha_registro      : timestamp
+
+
+Ejemplo de documento:
+
+{
+  "id_usuario": "USR001",
+  "nombre": "Administrador",
+  "correo": "admin@securedesk.com",
+  "rol": "admin",
+  "activo": true,
+  "intentos_fallidos": 0,
+  "bloqueado_hasta": null,
+  "ultimo_login": null,
+  "mfa_habilitado": false,
+  "fecha_registro": "2026-04-15"
+}
+
+
+-------------------------------------
+COLECCIÓN: tareas
+-------------------------------------
+
+Descripción:
+Almacena las tareas o actividades asignadas a los usuarios.
+
+Campos:
+
+id_tarea          : string
+titulo            : string
+descripcion       : string
+prioridad         : string (alta, media, baja)
+estado            : string (pendiente, en_proceso, completada)
+usuario_id        : string
+fecha_creacion    : timestamp
+fecha_limite      : timestamp
+archivo_evidencia : string (url de storage)
+firma             : string
+
+
+Ejemplo de documento:
+
+{
+  "id_tarea": "T001",
+  "titulo": "Reporte semanal",
+  "descripcion": "Subir reporte de actividades",
+  "prioridad": "alta",
+  "estado": "pendiente",
+  "usuario_id": "USR001",
+  "fecha_creacion": "2026-04-15",
+  "fecha_limite": "2026-04-20",
+  "archivo_evidencia": "",
+  "firma": ""
+}
+
+
+-------------------------------------
+COLECCIÓN: auditoria
+-------------------------------------
+
+Descripción:
+Registra todas las acciones importantes del sistema
+para monitoreo y seguridad.
+
+Campos:
+
+usuario       : string
+accion        : string
+resultado     : string
+fecha         : timestamp
+ip            : string
+dispositivo   : string
+
+
+Ejemplo de documento:
+
+{
+  "usuario": "admin@securedesk.com",
+  "accion": "login",
+  "resultado": "exitoso",
+  "fecha": "2026-04-15",
+  "ip": "192.168.1.10",
+  "dispositivo": "desktop"
+}
+
+
+-------------------------------------
+COLECCIÓN: documentos
+-------------------------------------
+
+Descripción:
+Guarda documentos legales o archivos del sistema.
+
+Campos:
+
+id_documento   : string
+nombre         : string
+tipo           : string (legal, reporte, evidencia)
+archivo_url    : string
+fecha_subida   : timestamp
+subido_por     : string
+hash_documento : string
+
+
+Ejemplo de documento:
+
+{
+  "id_documento": "DOC001",
+  "nombre": "Aviso de privacidad",
+  "tipo": "legal",
+  "archivo_url": "firebase_storage_link",
+  "fecha_subida": "2026-04-15",
+  "subido_por": "admin",
+  "hash_documento": "A45F8B9C..."
+}
+
+-------------------------------------
+
+FIN DE ESTRUCTURA
