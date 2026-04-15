@@ -1,0 +1,16 @@
+# entorno virtual
+venv/
+
+# python
+__pycache__/
+*.pyc
+
+# claves privadas
+llaveKey.json
+
+# VSCode
+.vscode/
+
+# sistema
+.DS_Store
+Thumbs.db
