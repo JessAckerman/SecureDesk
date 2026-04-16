@@ -8,6 +8,8 @@ from app.core.firebase import get_firestore_client
 from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService
 from app.services.document_service import DocumentService
+from app.services.email_service import EmailService
+from app.services.security_incident_service import SecurityIncidentService
 from app.services.task_service import TaskService
 from app.services.user_service import UserService
 from app.ui.components.sidebar import Sidebar
@@ -15,6 +17,7 @@ from app.ui.theme import apply_theme
 from app.ui.views.dashboard_view import DashboardView
 from app.ui.views.first_access_view import FirstAccessView
 from app.ui.views.login_view import LoginView
+from app.ui.views.security_lock_view import SecurityLockView
 
 
 class SecureDeskApp(tk.Tk):
@@ -27,8 +30,18 @@ class SecureDeskApp(tk.Tk):
 
         self.db = get_firestore_client()
         self.audit_service = AuditService(self.db)
-        self.user_service = UserService(self.db, self.audit_service)
-        self.auth_service = AuthService(self.db, self.audit_service)
+        self.email_service = EmailService()
+        self.security_incident_service = SecurityIncidentService(
+            self.db,
+            self.audit_service,
+            self.email_service,
+        )
+        self.user_service = UserService(self.db, self.audit_service, self.email_service)
+        self.auth_service = AuthService(
+            self.db,
+            self.audit_service,
+            self.security_incident_service,
+        )
         self.task_service = TaskService(self.db, self.audit_service)
         self.document_service = DocumentService(self.db, self.audit_service)
         self.services = {
@@ -37,6 +50,7 @@ class SecureDeskApp(tk.Tk):
             "auth": self.auth_service,
             "tasks": self.task_service,
             "documents": self.document_service,
+            "security": self.security_incident_service,
         }
         self.user_service.bootstrap_admin(
             CONFIG.bootstrap_admin_username,
@@ -58,6 +72,11 @@ class SecureDeskApp(tk.Tk):
         self.clear_container()
         self.login_view = LoginView(self.container, self.handle_login)
         self.login_view.pack(fill="both", expand=True)
+
+    def show_security_lock(self, blocked_until=None) -> None:
+        self.clear_container()
+        self.security_lock_view = SecurityLockView(self.container, self.show_login, blocked_until)
+        self.security_lock_view.pack(fill="both", expand=True)
 
     def handle_login(self, username: str, password: str) -> None:
         try:
@@ -82,14 +101,16 @@ class SecureDeskApp(tk.Tk):
         self,
         new_password: str,
         accept_privacy: bool,
-        accept_usage: bool,
+        accept_terms: bool,
+        accept_confidentiality: bool,
     ) -> None:
         try:
             self.auth_service.complete_first_access(
                 self.session,
                 new_password,
                 accept_privacy,
-                accept_usage,
+                accept_terms,
+                accept_confidentiality,
             )
             self.show_dashboard()
         except Exception as exc:
@@ -104,7 +125,7 @@ class SecureDeskApp(tk.Tk):
         sidebar = Sidebar(shell, self.navigate, self.logout, self.session)
         sidebar.pack(side="left", fill="y")
 
-        self.dashboard = DashboardView(shell, self.services, self.session)
+        self.dashboard = DashboardView(shell, self.services, self.session, self.force_security_logout)
         self.dashboard.pack(side="left", fill="both", expand=True)
 
     def navigate(self, section: str) -> None:
@@ -131,6 +152,17 @@ class SecureDeskApp(tk.Tk):
             self.auth_service.logout(self.session)
         self.session = None
         self.show_login()
+
+    def force_security_logout(self) -> None:
+        blocked_until = None
+        if self.session:
+            user_data = self.user_service.get_user(self.session.user_id)
+            if user_data:
+                blocked_until = user_data.get("blocked_until")
+        if self.session:
+            self.auth_service.logout(self.session)
+        self.session = None
+        self.show_security_lock(blocked_until)
 
     def _on_close(self) -> None:
         if self.session:

@@ -6,7 +6,6 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 
 from app.core.config import CONFIG
 from app.core.security import (
-    build_lockout_expiry,
     hash_password,
     sanitize_text,
     utc_now,
@@ -17,9 +16,10 @@ from app.core.session import UserSession
 
 
 class AuthService:
-    def __init__(self, db, audit_service) -> None:
+    def __init__(self, db, audit_service, security_incident_service=None) -> None:
         self.db = db
         self.audit_service = audit_service
+        self.security_incident_service = security_incident_service
 
     def _find_user_doc(self, username: str):
         query = (
@@ -49,7 +49,8 @@ class AuthService:
                 "Intento sobre cuenta temporalmente bloqueada.",
                 {"blocked_until": blocked_until.isoformat()},
             )
-            raise ValueError("Cuenta bloqueada temporalmente. Intenta mas tarde.")
+            security_alert_message = data.get("security_alert_message") or "Cuenta bloqueada temporalmente. Intenta mas tarde."
+            raise ValueError(security_alert_message)
 
         if data.get("status") == "bloqueado" and (
             not isinstance(blocked_until, datetime) or blocked_until <= utc_now()
@@ -82,10 +83,28 @@ class AuthService:
             update_payload = {"failed_attempts": attempts, "updated_at": utc_now()}
             description = "Contrasena incorrecta."
             if attempts >= CONFIG.login_max_attempts:
-                update_payload["blocked_until"] = build_lockout_expiry(CONFIG.lockout_minutes)
-                update_payload["status"] = "bloqueado"
+                if self.security_incident_service:
+                    self.security_incident_service.trigger_bruteforce_lock(
+                        user_doc_id=user_doc.id,
+                        user_data=data,
+                        attempts=attempts,
+                        source="auth-guard",
+                    )
+                    update_payload = None
+                    self.audit_service.log_event(
+                        "login_failed",
+                        data.get("username", "desconocido"),
+                        "Cuenta bloqueada por multiples intentos fallidos.",
+                        {"failed_attempts": attempts},
+                    )
+                    raise ValueError(
+                        "ALERTA DE SEGURIDAD: Detectamos multiples intentos fallidos de acceso. "
+                        "Tu cuenta fue bloqueada temporalmente y deberas cambiar tu contrasena "
+                        "cuando el bloqueo expire."
+                    )
                 description = "Cuenta bloqueada por multiples intentos fallidos."
-            self.db.collection("usuarios").document(user_doc.id).update(update_payload)
+            if update_payload:
+                self.db.collection("usuarios").document(user_doc.id).update(update_payload)
             self.audit_service.log_event(
                 "login_failed",
                 data.get("username", "desconocido"),
@@ -110,6 +129,8 @@ class AuthService:
             role=data.get("role", ""),
             must_change_password=bool(data.get("must_change_password", False)),
             accepted_policies=bool(data.get("accepted_policies", False)),
+            security_alert_active=bool(data.get("security_alert_active", False)),
+            security_alert_message=data.get("security_alert_message", "") or "",
         )
         self.audit_service.log_event(
             "login_success",
@@ -124,10 +145,11 @@ class AuthService:
         session: UserSession,
         new_password: str,
         accept_privacy: bool,
-        accept_usage: bool,
+        accept_terms: bool,
+        accept_confidentiality: bool,
     ) -> None:
-        if not accept_privacy or not accept_usage:
-            raise ValueError("Debes aceptar ambos avisos para continuar.")
+        if not accept_privacy or not accept_terms or not accept_confidentiality:
+            raise ValueError("Debes aceptar todos los avisos para continuar.")
         password_ok, password_message = validate_password_policy(new_password)
         if not password_ok:
             raise ValueError(password_message)
@@ -140,6 +162,8 @@ class AuthService:
                 "must_change_password": False,
                 "accepted_policies": True,
                 "accepted_policies_at": utc_now(),
+                "security_alert_active": False,
+                "security_alert_message": None,
                 "updated_at": utc_now(),
             }
         )

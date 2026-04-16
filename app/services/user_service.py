@@ -5,15 +5,22 @@ from typing import Any
 
 from google.cloud.firestore_v1.base_query import FieldFilter
 
-from app.core.security import hash_password, sanitize_text, utc_now, validate_email
+from app.core.security import (
+    generate_temporary_password,
+    hash_password,
+    sanitize_text,
+    utc_now,
+    validate_email,
+)
 
 
 class UserService:
     USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{4,30}$")
 
-    def __init__(self, db, audit_service) -> None:
+    def __init__(self, db, audit_service, email_service) -> None:
         self.db = db
         self.audit_service = audit_service
+        self.email_service = email_service
 
     def _validate_password_strength(self, password: str) -> None:
         if len(password) < 8:
@@ -64,6 +71,17 @@ class UserService:
             items.append(data)
         return items
 
+    def get_user(self, user_id: str) -> dict[str, Any] | None:
+        user_id = sanitize_text(user_id, 120)
+        if not user_id:
+            return None
+        snapshot = self.db.collection("usuarios").document(user_id).get()
+        if not snapshot.exists:
+            return None
+        data = snapshot.to_dict()
+        data["id"] = snapshot.id
+        return data
+
     def create_user(
         self,
         actor: str,
@@ -71,7 +89,6 @@ class UserService:
         full_name: str,
         email: str,
         role: str,
-        password: str,
     ) -> None:
         username = sanitize_text(username, 60)
         full_name = sanitize_text(full_name, 120)
@@ -88,7 +105,6 @@ class UserService:
             raise ValueError("El correo electronico no es valido.")
         if role not in {"Administrador", "Usuario"}:
             raise ValueError("El rol seleccionado no es valido.")
-        self._validate_password_strength(password)
 
         duplicated = (
             self.db.collection("usuarios")
@@ -108,6 +124,8 @@ class UserService:
         if any(True for _ in duplicated_email):
             raise ValueError("El correo electronico ya esta registrado.")
 
+        password = generate_temporary_password()
+        self._validate_password_strength(password)
         password_hash, salt = hash_password(password)
         payload = {
             "username": username,
@@ -125,12 +143,25 @@ class UserService:
             "created_at": utc_now(),
             "updated_at": utc_now(),
         }
-        self.db.collection("usuarios").add(payload)
+        user_ref = self.db.collection("usuarios").document()
+        user_ref.set(payload)
+        try:
+            self.email_service.send_temporary_password(
+                to_email=email,
+                full_name=full_name,
+                username=username,
+                temporary_password=password,
+                role=role,
+            )
+        except Exception:
+            user_ref.delete()
+            raise
+
         self.audit_service.log_event(
             "create_user",
             actor,
-            f"Se registro el usuario {username} con contrasena provisional.",
-            {"username": username, "role": role},
+            f"Se registro el usuario {username} y se envio su contrasena provisional por correo.",
+            {"username": username, "role": role, "email": email},
         )
 
     def update_status(self, actor: str, user_id: str, status: str) -> None:
@@ -145,4 +176,26 @@ class UserService:
             actor,
             f"Se actualizo el estado del usuario {user_id} a {status}.",
             {"user_id": user_id, "status": status},
+        )
+
+    def clear_security_lock(self, actor: str, user_id: str) -> None:
+        user_id = sanitize_text(user_id, 120)
+        if not user_id:
+            raise ValueError("Usuario no valido.")
+
+        self.db.collection("usuarios").document(user_id).update(
+            {
+                "status": "activo",
+                "failed_attempts": 0,
+                "blocked_until": None,
+                "security_alert_active": False,
+                "security_alert_message": None,
+                "updated_at": utc_now(),
+            }
+        )
+        self.audit_service.log_event(
+            "security_lock_cleared",
+            actor,
+            f"Se retiro manualmente el bloqueo de seguridad del usuario {user_id}.",
+            {"user_id": user_id},
         )

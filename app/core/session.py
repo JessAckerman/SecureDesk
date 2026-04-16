@@ -15,6 +15,8 @@ class UserSession:
     role: str
     must_change_password: bool = False
     accepted_policies: bool = False
+    security_alert_active: bool = False
+    security_alert_message: str = ""
     token: str = field(default_factory=generate_session_token)
     created_at: datetime = field(default_factory=utc_now)
     last_activity: datetime = field(default_factory=utc_now)

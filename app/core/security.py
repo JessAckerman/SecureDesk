@@ -71,6 +71,23 @@ def generate_session_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def generate_temporary_password(length: int = 8) -> str:
+    if length < 8:
+        raise ValueError("La longitud minima para una contrasena temporal es 8.")
+
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()-_=+?"
+    required = [
+        secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ"),
+        secrets.choice("abcdefghijkmnopqrstuvwxyz"),
+        secrets.choice("23456789"),
+        secrets.choice("!@#$%^&*()-_=+?"),
+    ]
+    remaining = [secrets.choice(alphabet) for _ in range(length - len(required))]
+    password_chars = required + remaining
+    secrets.SystemRandom().shuffle(password_chars)
+    return "".join(password_chars)
+
+
 def generate_document_hash(file_path: str | Path) -> str:
     digest = hashlib.sha256()
     with Path(file_path).open("rb") as handle:

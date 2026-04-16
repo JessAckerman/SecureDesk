@@ -5,17 +5,24 @@ import re
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from app.core.security import validate_email, validate_password_policy
+from app.core.security import validate_email
 from app.ui.components.signature_pad import SignaturePad
+
+try:
+    import winsound
+except ImportError:  # pragma: no cover - plataforma sin winsound
+    winsound = None
 
 
 class DashboardView(ttk.Frame):
     USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{4,30}$")
+    SECURITY_POLL_MS = 3000
 
-    def __init__(self, parent, services, session) -> None:
+    def __init__(self, parent, services, session, on_forced_logout) -> None:
         super().__init__(parent, style="App.TFrame", padding=24)
         self.services = services
         self.session = session
+        self.on_forced_logout = on_forced_logout
         self.current_section = None
         self.file_path_var = tk.StringVar()
         self.task_due_dates = self._build_due_date_options()
@@ -31,6 +38,10 @@ class DashboardView(ttk.Frame):
             "Otro",
         ]
         self.user_roles = ["Administrador", "Usuario"]
+        self.security_banner = None
+        self._security_poll_job = None
+        self._security_alert_seen = bool(getattr(self.session, "security_alert_active", False))
+        self._security_logout_in_progress = False
         self._build()
 
     def _build_due_date_options(self) -> list[str]:
@@ -95,6 +106,7 @@ class DashboardView(ttk.Frame):
 
         self.section_title = ttk.Label(self, text="Dashboard", style="Title.TLabel")
         self.section_title.pack(anchor="w", pady=(0, 12))
+        self._render_session_security_banner()
 
         scroll_shell = ttk.Frame(self, style="App.TFrame")
         scroll_shell.pack(fill="both", expand=True)
@@ -130,6 +142,162 @@ class DashboardView(ttk.Frame):
 
         self.refresh_all()
         self.show_section("dashboard")
+        self._schedule_security_poll()
+
+    def _render_session_security_banner(self) -> None:
+        if not getattr(self.session, "security_alert_message", ""):
+            if self.security_banner and self.security_banner.winfo_exists():
+                self.security_banner.destroy()
+                self.security_banner = None
+            return
+
+        if self.security_banner and self.security_banner.winfo_exists():
+            self.security_banner.destroy()
+
+        alert = tk.Frame(self, bg="#FFF5F5", highlightbackground="#C53B3B", highlightthickness=2)
+        alert.pack(fill="x", pady=(0, 16), before=self.section_title)
+        self.security_banner = alert
+        accent = tk.Frame(alert, bg="#C53B3B", width=10)
+        accent.pack(side="left", fill="y")
+        body = tk.Frame(alert, bg="#FFF5F5")
+        body.pack(side="left", fill="both", expand=True, padx=18, pady=16)
+        tk.Label(
+            body,
+            text="ALERTA DE SEGURIDAD",
+            bg="#FFF5F5",
+            fg="#9B1C1C",
+            font=("Segoe UI Semibold", 17),
+        ).pack(anchor="w")
+        tk.Label(
+            body,
+            text=self.session.security_alert_message,
+            bg="#FFF5F5",
+            fg="#9B1C1C",
+            font=("Segoe UI", 11),
+            wraplength=980,
+            justify="left",
+        ).pack(anchor="w", pady=(6, 0))
+
+    def _schedule_security_poll(self) -> None:
+        if self.winfo_exists():
+            self._security_poll_job = self.after(self.SECURITY_POLL_MS, self._poll_security_state)
+
+    def _poll_security_state(self) -> None:
+        self._security_poll_job = None
+        if not self.winfo_exists():
+            return
+
+        try:
+            user_data = self.services["users"].get_user(self.session.user_id)
+        except Exception:
+            self._schedule_security_poll()
+            return
+
+        if user_data:
+            alert_active = bool(user_data.get("security_alert_active", False))
+            alert_message = user_data.get("security_alert_message", "") or ""
+            status = (user_data.get("status") or "").lower()
+            self.session.security_alert_active = alert_active
+            self.session.security_alert_message = alert_message
+            self.session.must_change_password = bool(user_data.get("must_change_password", self.session.must_change_password))
+
+            if alert_active:
+                self._render_session_security_banner()
+                if not self._security_alert_seen:
+                    self._show_security_lock_modal(alert_message)
+            else:
+                self._render_session_security_banner()
+
+            self._security_alert_seen = alert_active
+            if status == "bloqueado" and alert_active and not self._security_logout_in_progress:
+                self._show_security_lock_modal(alert_message)
+
+        self._schedule_security_poll()
+
+    def destroy(self) -> None:
+        if self._security_poll_job is not None:
+            try:
+                self.after_cancel(self._security_poll_job)
+            except Exception:
+                pass
+            self._security_poll_job = None
+        super().destroy()
+
+    def _show_security_lock_modal(self, alert_message: str) -> None:
+        if self._security_logout_in_progress or not self.winfo_exists():
+            return
+
+        self._security_logout_in_progress = True
+        seconds_left = {"value": 10}
+        modal = tk.Toplevel(self)
+        modal.title("Alerta de seguridad")
+        modal.transient(self.winfo_toplevel())
+        modal.grab_set()
+        modal.configure(bg="#7F1D1D")
+        modal.geometry("620x280")
+        modal.resizable(False, False)
+
+        shell = tk.Frame(modal, bg="#FFF5F5", highlightbackground="#C53B3B", highlightthickness=3)
+        shell.pack(fill="both", expand=True, padx=14, pady=14)
+        tk.Label(
+            shell,
+            text="ALERTA DE SEGURIDAD",
+            bg="#FFF5F5",
+            fg="#9B1C1C",
+            font=("Segoe UI Semibold", 22),
+        ).pack(anchor="w", padx=22, pady=(22, 8))
+        tk.Label(
+            shell,
+            text=alert_message,
+            bg="#FFF5F5",
+            fg="#9B1C1C",
+            font=("Segoe UI", 12),
+            wraplength=540,
+            justify="left",
+        ).pack(anchor="w", padx=22)
+        countdown_var = tk.StringVar(value="Tu sesion se cerrara en 10 segundos.")
+        tk.Label(
+            shell,
+            textvariable=countdown_var,
+            bg="#FFF5F5",
+            fg="#7F1D1D",
+            font=("Segoe UI Semibold", 16),
+        ).pack(anchor="w", padx=22, pady=(18, 8))
+        tk.Label(
+            shell,
+            text="La cuenta fue bloqueada por seguridad y se cerrara esta sesion.",
+            bg="#FFF5F5",
+            fg="#B45309",
+            font=("Segoe UI", 11),
+        ).pack(anchor="w", padx=22)
+
+        def tick() -> None:
+            if not modal.winfo_exists():
+                return
+            if winsound:
+                try:
+                    winsound.MessageBeep(winsound.MB_ICONHAND)
+                except Exception:
+                    pass
+            seconds_left["value"] -= 1
+            if seconds_left["value"] <= 0:
+                try:
+                    modal.grab_release()
+                except Exception:
+                    pass
+                modal.destroy()
+                self.on_forced_logout()
+                return
+            countdown_var.set(f"Tu sesion se cerrara en {seconds_left['value']} segundos.")
+            modal.after(1000, tick)
+
+        modal.protocol("WM_DELETE_WINDOW", lambda: None)
+        if winsound:
+            try:
+                winsound.MessageBeep(winsound.MB_ICONHAND)
+            except Exception:
+                pass
+        modal.after(1000, tick)
 
     def _resize_scroll_content(self, event) -> None:
         self.scroll_canvas.itemconfigure(self.content_window, width=event.width)
@@ -161,9 +329,6 @@ class DashboardView(ttk.Frame):
         if not task_id:
             return "Sin tarea vinculada"
         return self.task_lookup.get(task_id, task_id)
-
-    def _password_message(self, password: str) -> tuple[bool, str]:
-        return validate_password_policy(password)
 
     def _set_control_feedback(self, control: dict, valid: bool, message: str) -> None:
         widget = control["widget"]
@@ -205,8 +370,6 @@ class DashboardView(ttk.Frame):
                 "Rol seleccionado." if self._value(controls["role"]) in self.user_roles else "Selecciona un rol.",
             ),
         }
-        password_ok, password_msg = self._password_message(self._value(controls["password"]))
-        results["password"] = (password_ok, password_msg)
         if paint:
             for key, (valid, message) in results.items():
                 if key in controls:
@@ -418,7 +581,7 @@ class DashboardView(ttk.Frame):
         ttk.Label(top, text="Administracion de usuarios", style="PanelTitle.TLabel").pack(anchor="w")
         ttk.Label(
             top,
-            text="Solo el administrador crea cuentas y define la contrasena provisional.",
+            text="Solo el administrador crea cuentas. La contrasena provisional se genera automaticamente y se envia al correo del usuario.",
             style="PanelText.TLabel",
         ).pack(anchor="w", pady=(4, 12))
 
@@ -427,7 +590,6 @@ class DashboardView(ttk.Frame):
             {"label": "Nombre completo", "key": "full_name", "kind": "entry"},
             {"label": "Correo", "key": "email", "kind": "entry"},
             {"label": "Rol", "key": "role", "kind": "combobox", "values": self.user_roles, "width": 16},
-            {"label": "Contrasena provisional", "key": "password", "kind": "entry", "show": "*"},
         ]
         entries = self._render_responsive_fields(self.content, field_specs, self._validate_user_form, max_columns=3)
 
@@ -444,12 +606,18 @@ class DashboardView(ttk.Frame):
             ("Usuario", "Nombre", "Correo", "Rol", "Estado"),
         )
         for item in self.users:
-            tree.insert("", "end", iid=item["id"], values=(item.get("username"), item.get("full_name"), item.get("email"), item.get("role"), item.get("status")))
+            tags = ()
+            if item.get("status") == "bloqueado" or item.get("security_alert_active"):
+                tags = ("security_blocked",)
+            tree.insert("", "end", iid=item["id"], values=(item.get("username"), item.get("full_name"), item.get("email"), item.get("role"), item.get("status")), tags=tags)
+        tree.tag_configure("security_blocked", background="#FFF5F5", foreground="#9B1C1C")
 
         actions = ttk.Frame(self.content, style="Panel.TFrame")
         actions.pack(fill="x", pady=(10, 0))
         ttk.Button(actions, text="Bloquear seleccionado", style="Secondary.TButton", command=lambda: self._update_user_status(tree, "bloqueado")).pack(side="left", padx=(0, 8))
         ttk.Button(actions, text="Activar seleccionado", style="Secondary.TButton", command=lambda: self._update_user_status(tree, "activo")).pack(side="left")
+        ttk.Button(actions, text="Quitar bloqueo", style="Secondary.TButton", command=lambda: self._clear_security_lock(tree)).pack(side="left", padx=(8, 0))
+        ttk.Button(actions, text="Simular ataque", style="Primary.TButton", command=lambda: self._simulate_security_incident(tree)).pack(side="right")
 
     def _render_tasks(self) -> None:
         ttk.Label(self.content, text="Gestion de tareas", style="PanelTitle.TLabel").pack(anchor="w")
@@ -552,7 +720,12 @@ class DashboardView(ttk.Frame):
         tree = self._tree(self.content, ("type", "actor", "description", "created"), ("Evento", "Actor", "Descripcion", "Fecha"))
         for item in self.audit:
             created = item.get("created_at")
-            tree.insert("", "end", values=(item.get("event_type"), item.get("actor"), item.get("description"), created.strftime("%Y-%m-%d %H:%M") if created else ""))
+            event_type = item.get("event_type", "")
+            tags = ()
+            if "security" in event_type.lower() or "bruteforce" in event_type.lower():
+                tags = ("security",)
+            tree.insert("", "end", values=(event_type, item.get("actor"), item.get("description"), created.strftime("%Y-%m-%d %H:%M") if created else ""), tags=tags)
+        tree.tag_configure("security", background="#FFF5F5", foreground="#9B1C1C")
 
     def _create_user(self, entries) -> None:
         if not self._assert_admin():
@@ -567,9 +740,8 @@ class DashboardView(ttk.Frame):
                 self._value(entries["full_name"]),
                 self._value(entries["email"]),
                 self._value(entries["role"]),
-                self._value(entries["password"]),
             )
-            messagebox.showinfo("SecureDesk", "Usuario creado correctamente.")
+            messagebox.showinfo("SecureDesk", "Usuario creado correctamente. La contrasena provisional fue enviada por correo.")
             self.show_section("usuarios")
         except Exception as exc:
             messagebox.showerror("SecureDesk", str(exc))
@@ -584,6 +756,47 @@ class DashboardView(ttk.Frame):
         try:
             self.services["users"].update_status(self.session.username, selection[0], status)
             messagebox.showinfo("SecureDesk", "Estado actualizado.")
+            self.show_section("usuarios")
+        except Exception as exc:
+            messagebox.showerror("SecureDesk", str(exc))
+
+    def _simulate_security_incident(self, tree) -> None:
+        if not self._assert_admin():
+            return
+        selection = tree.selection()
+        if not selection:
+            messagebox.showwarning("SecureDesk", "Selecciona un usuario para simular el incidente.")
+            return
+        user = next((item for item in self.users if item.get("id") == selection[0]), None)
+        if not user:
+            messagebox.showwarning("SecureDesk", "No se encontro el usuario seleccionado.")
+            return
+        if not messagebox.askyesno(
+            "SecureDesk",
+            f"Se simulara un intento de fuerza bruta defensivo sobre {user.get('username')}. "
+            "Esto bloqueara temporalmente la cuenta y enviara alertas. Deseas continuar?",
+        ):
+            return
+        try:
+            self.services["security"].trigger_simulated_bruteforce(user.get("username", ""))
+            messagebox.showinfo(
+                "SecureDesk",
+                "Incidente simulado correctamente. La cuenta fue bloqueada y se enviaron las alertas configuradas.",
+            )
+            self.show_section("usuarios")
+        except Exception as exc:
+            messagebox.showerror("SecureDesk", str(exc))
+
+    def _clear_security_lock(self, tree) -> None:
+        if not self._assert_admin():
+            return
+        selection = tree.selection()
+        if not selection:
+            messagebox.showwarning("SecureDesk", "Selecciona un usuario.")
+            return
+        try:
+            self.services["users"].clear_security_lock(self.session.username, selection[0])
+            messagebox.showinfo("SecureDesk", "Bloqueo de seguridad retirado.")
             self.show_section("usuarios")
         except Exception as exc:
             messagebox.showerror("SecureDesk", str(exc))
