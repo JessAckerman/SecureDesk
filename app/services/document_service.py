@@ -33,12 +33,16 @@ class DocumentService:
         related_task_id: str,
         file_path: str,
         notes: str,
+        user_signature_name: str,
+        user_signature_svg: str,
     ) -> None:
         clean_path = sanitize_text(file_path, 260)
         clean_title = sanitize_text(title, 120)
         clean_category = sanitize_text(category, 60)
         clean_task_id = sanitize_text(related_task_id, 80)
         clean_notes = sanitize_multiline(notes, 1200)
+        clean_user_signature_name = sanitize_text(user_signature_name, 140)
+        clean_user_signature_svg = (user_signature_svg or "").strip()
 
         if not clean_title:
             raise ValueError("Debes capturar el titulo del documento.")
@@ -48,6 +52,10 @@ class DocumentService:
             raise ValueError("Debes seleccionar un archivo.")
         if not Path(clean_path).exists():
             raise ValueError("El archivo seleccionado no existe.")
+        if len(clean_user_signature_name) < 5:
+            raise ValueError("Debes capturar el nombre del firmante.")
+        if not clean_user_signature_svg.startswith("<svg"):
+            raise ValueError("Debes capturar la firma del usuario.")
 
         integrity_hash = generate_document_hash(clean_path)
         digital_signature, signer_identity = sign_document_hash(integrity_hash)
@@ -61,6 +69,9 @@ class DocumentService:
             "digital_signature": digital_signature,
             "signed_by": signer_identity,
             "signature_algorithm": "RSA-SHA256",
+            "user_signature_name": clean_user_signature_name,
+            "user_signature_svg": clean_user_signature_svg,
+            "user_signed_at": utc_now(),
             "notes": clean_notes,
             "created_at": utc_now(),
             "updated_at": utc_now(),
@@ -74,5 +85,6 @@ class DocumentService:
                 "category": payload["category"],
                 "integrity_hash": integrity_hash,
                 "signature_algorithm": payload["signature_algorithm"],
+                "user_signature_name": clean_user_signature_name,
             },
         )

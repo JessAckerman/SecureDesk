@@ -5,7 +5,8 @@ import re
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from app.core.security import validate_email
+from app.core.security import validate_email, validate_password_policy
+from app.ui.components.signature_pad import SignaturePad
 
 
 class DashboardView(ttk.Frame):
@@ -45,8 +46,26 @@ class DashboardView(ttk.Frame):
         ttk.Label(header, text="Panel Principal", style="Title.TLabel").pack(anchor="w")
         ttk.Label(
             header,
-            text=f"Sesion activa: {self.session.full_name} ({self.session.role})",
+            text=f"Vista ejecutiva activa para {self.session.full_name} ({self.session.role})",
             style="Subtitle.TLabel",
+        ).pack(anchor="w", pady=(4, 0))
+
+        banner = tk.Frame(self, bg="#FFFFFF", highlightbackground="#D5DFEA", highlightthickness=1)
+        banner.pack(fill="x", pady=(0, 18))
+        accent = tk.Frame(banner, bg="#1E5AA8", width=8)
+        accent.pack(side="left", fill="y")
+        banner_body = ttk.Frame(banner, style="Card.TFrame", padding=18)
+        banner_body.pack(side="left", fill="both", expand=True)
+        ttk.Label(
+            banner_body,
+            text="Centro de mando corporativo",
+            style="PanelTitle.TLabel",
+        ).pack(anchor="w")
+        ttk.Label(
+            banner_body,
+            text="Supervisa usuarios, operaciones, documentos firmados y eventos criticos desde una experiencia mas clara y profesional.",
+            style="PanelText.TLabel",
+            wraplength=980,
         ).pack(anchor="w", pady=(4, 0))
 
         stats = ttk.Frame(self, style="App.TFrame")
@@ -56,21 +75,68 @@ class DashboardView(ttk.Frame):
             card_titles = ["Usuarios", "Tareas", "Documentos", "Auditoria"]
         self.stats_labels = {}
         for title in card_titles:
-            card = ttk.Frame(stats, style="Panel.TFrame", padding=18)
+            card_shell = tk.Frame(stats, bg="#FFFFFF", highlightbackground="#D5DFEA", highlightthickness=1)
+            card_shell.pack(side="left", expand=True, fill="both", padx=(0, 10))
+            color = "#1E5AA8"
+            if title == "Usuarios":
+                color = "#4AA3D8"
+            elif title == "Documentos":
+                color = "#0F766E"
+            elif title == "Auditoria":
+                color = "#C18A2C"
+            tk.Frame(card_shell, bg=color, height=6).pack(fill="x")
+            card = ttk.Frame(card_shell, style="Card.TFrame", padding=18)
             card.pack(side="left", expand=True, fill="both", padx=(0, 10))
-            ttk.Label(card, text=title, style="PanelText.TLabel").pack(anchor="w")
-            value = ttk.Label(card, text="0", style="PanelTitle.TLabel")
-            value.pack(anchor="w", pady=(8, 0))
+            ttk.Label(card, text=title.upper(), style="StatCaption.TLabel").pack(anchor="w")
+            value = ttk.Label(card, text="0", style="StatValue.TLabel")
+            value.pack(anchor="w", pady=(10, 0))
+            ttk.Label(card, text="Indicador consolidado", style="StatCaption.TLabel").pack(anchor="w", pady=(6, 0))
             self.stats_labels[title.lower()] = value
 
         self.section_title = ttk.Label(self, text="Dashboard", style="Title.TLabel")
         self.section_title.pack(anchor="w", pady=(0, 12))
 
-        self.content = ttk.Frame(self, style="Panel.TFrame", padding=20)
-        self.content.pack(fill="both", expand=True)
+        scroll_shell = ttk.Frame(self, style="App.TFrame")
+        scroll_shell.pack(fill="both", expand=True)
+
+        self.scroll_canvas = tk.Canvas(
+            scroll_shell,
+            bg="#EEF3F8",
+            highlightthickness=0,
+            bd=0,
+        )
+        self.scroll_canvas.pack(side="left", fill="both", expand=True)
+
+        self.scrollbar = ttk.Scrollbar(
+            scroll_shell,
+            orient="vertical",
+            command=self.scroll_canvas.yview,
+        )
+        self.scrollbar.pack(side="right", fill="y")
+        self.scroll_canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.content = ttk.Frame(self.scroll_canvas, style="Panel.TFrame", padding=20)
+        self.content_window = self.scroll_canvas.create_window(
+            (0, 0),
+            window=self.content,
+            anchor="nw",
+        )
+        self.content.bind(
+            "<Configure>",
+            lambda _event: self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all")),
+        )
+        self.scroll_canvas.bind("<Configure>", self._resize_scroll_content)
+        self.scroll_canvas.bind_all("<MouseWheel>", self._on_mousewheel)
 
         self.refresh_all()
         self.show_section("dashboard")
+
+    def _resize_scroll_content(self, event) -> None:
+        self.scroll_canvas.itemconfigure(self.content_window, width=event.width)
+
+    def _on_mousewheel(self, event) -> None:
+        if self.winfo_exists():
+            self.scroll_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def _assert_admin(self) -> bool:
         if self.session.role != "Administrador":
@@ -97,17 +163,7 @@ class DashboardView(ttk.Frame):
         return self.task_lookup.get(task_id, task_id)
 
     def _password_message(self, password: str) -> tuple[bool, str]:
-        if len(password) < 8:
-            return False, "Minimo 8 caracteres."
-        if not any(char.isupper() for char in password):
-            return False, "Incluye una mayuscula."
-        if not any(char.islower() for char in password):
-            return False, "Incluye una minuscula."
-        if not any(char.isdigit() for char in password):
-            return False, "Incluye un numero."
-        if not any(char in "!@#$%^&*()-_=+[]{};:,.?" for char in password):
-            return False, "Incluye un simbolo."
-        return True, "Contrasena valida."
+        return validate_password_policy(password)
 
     def _set_control_feedback(self, control: dict, valid: bool, message: str) -> None:
         widget = control["widget"]
@@ -115,8 +171,13 @@ class DashboardView(ttk.Frame):
         widget_type = control["type"]
         if widget_type == "combobox":
             widget.configure(style="Valid.TCombobox" if valid else "Invalid.TCombobox")
-        else:
+        elif widget_type == "entry":
             widget.configure(style="Valid.TEntry" if valid else "Invalid.TEntry")
+        elif widget_type == "signature":
+            widget.configure(
+                highlightbackground="#2F855A" if valid else "#C53B3B",
+                highlightthickness=1,
+            )
         feedback.configure(
             text=message,
             style="SuccessFeedback.TLabel" if valid else "ErrorFeedback.TLabel",
@@ -148,7 +209,8 @@ class DashboardView(ttk.Frame):
         results["password"] = (password_ok, password_msg)
         if paint:
             for key, (valid, message) in results.items():
-                self._set_control_feedback(controls[key], valid, message)
+                if key in controls:
+                    self._set_control_feedback(controls[key], valid, message)
         return all(valid for valid, _ in results.values())
 
     def _validate_task_form(self, controls: dict, paint: bool = True) -> bool:
@@ -185,6 +247,9 @@ class DashboardView(ttk.Frame):
 
     def _validate_document_form(self, controls: dict, paint: bool = True) -> bool:
         file_ok = bool(self._value(controls["file_path"]))
+        signature_name = self._value(controls["user_signature_name"])
+        signature_control = controls.get("signature_pad")
+        signature_drawn = signature_control["widget"].has_signature() if signature_control else False
         results = {
             "title": (
                 len(self._value(controls["title"])) >= 4,
@@ -206,10 +271,19 @@ class DashboardView(ttk.Frame):
                 file_ok,
                 "Archivo seleccionado." if file_ok else "Selecciona un archivo.",
             ),
+            "user_signature_name": (
+                len(signature_name) >= 5,
+                "Firmante identificado." if len(signature_name) >= 5 else "Captura el nombre del firmante.",
+            ),
+            "signature_pad": (
+                signature_drawn,
+                "Firma manuscrita capturada." if signature_drawn else "Firma en el recuadro con el mouse.",
+            ),
         }
         if paint:
             for key, (valid, message) in results.items():
-                self._set_control_feedback(controls[key], valid, message)
+                if key in controls:
+                    self._set_control_feedback(controls[key], valid, message)
         return all(valid for valid, _ in results.values())
 
     def show_section(self, section: str) -> None:
@@ -217,6 +291,7 @@ class DashboardView(ttk.Frame):
         self.refresh_all()
         for child in self.content.winfo_children():
             child.destroy()
+        self.scroll_canvas.yview_moveto(0)
         self.section_title.configure(text=section.capitalize())
 
         if section == "dashboard":
@@ -284,57 +359,61 @@ class DashboardView(ttk.Frame):
 
     def _render_dashboard_summary(self) -> None:
         if self.session.role == "Administrador":
-            ttk.Label(
-                self.content,
-                text="Resumen ejecutivo con tareas recientes y eventos criticos de auditoria.",
-                style="PanelText.TLabel",
-            ).pack(anchor="w")
-
-            summary = ttk.Frame(self.content, style="Panel.TFrame")
+            summary = ttk.Frame(self.content, style="Card.TFrame")
             summary.pack(fill="both", expand=True, pady=(16, 0))
 
-            left = ttk.Frame(summary, style="Panel.TFrame")
+            left_shell = tk.Frame(summary, bg="#FFFFFF", highlightbackground="#D5DFEA", highlightthickness=1)
+            left_shell.pack(side="left", fill="both", expand=True, padx=(0, 12))
+            tk.Frame(left_shell, bg="#1E5AA8", height=5).pack(fill="x")
+            left = ttk.Frame(left_shell, style="Card.TFrame", padding=18)
             left.pack(side="left", fill="both", expand=True, padx=(0, 12))
-            right = ttk.Frame(summary, style="Panel.TFrame")
+            right_shell = tk.Frame(summary, bg="#FFFFFF", highlightbackground="#D5DFEA", highlightthickness=1)
+            right_shell.pack(side="left", fill="both", expand=True)
+            tk.Frame(right_shell, bg="#C18A2C", height=5).pack(fill="x")
+            right = ttk.Frame(right_shell, style="Card.TFrame", padding=18)
             right.pack(side="left", fill="both", expand=True)
 
             ttk.Label(left, text="Tareas recientes", style="PanelTitle.TLabel").pack(anchor="w")
+            ttk.Label(left, text="Seguimiento de actividad operativa actual", style="PanelText.TLabel").pack(anchor="w", pady=(4, 0))
             task_tree = self._tree(left, ("title", "priority", "status"), ("Titulo", "Prioridad", "Estado"))
             for item in self.tasks[-8:]:
                 task_tree.insert("", "end", values=(item.get("title"), item.get("priority"), item.get("status")))
 
             ttk.Label(right, text="Eventos criticos", style="PanelTitle.TLabel").pack(anchor="w")
+            ttk.Label(right, text="Alertas y movimientos relevantes de seguridad", style="PanelText.TLabel").pack(anchor="w", pady=(4, 0))
             audit_tree = self._tree(right, ("type", "actor", "description"), ("Evento", "Actor", "Descripcion"))
             for item in self.audit[:8]:
                 audit_tree.insert("", "end", values=(item.get("event_type"), item.get("actor"), item.get("description")))
             return
 
-        ttk.Label(
-            self.content,
-            text="Resumen operativo del usuario sin exponer informacion de auditoria.",
-            style="PanelText.TLabel",
-        ).pack(anchor="w")
-
-        summary = ttk.Frame(self.content, style="Panel.TFrame")
+        summary = ttk.Frame(self.content, style="Card.TFrame")
         summary.pack(fill="both", expand=True, pady=(16, 0))
 
-        left = ttk.Frame(summary, style="Panel.TFrame")
+        left_shell = tk.Frame(summary, bg="#FFFFFF", highlightbackground="#D5DFEA", highlightthickness=1)
+        left_shell.pack(side="left", fill="both", expand=True, padx=(0, 12))
+        tk.Frame(left_shell, bg="#1E5AA8", height=5).pack(fill="x")
+        left = ttk.Frame(left_shell, style="Card.TFrame", padding=18)
         left.pack(side="left", fill="both", expand=True, padx=(0, 12))
-        right = ttk.Frame(summary, style="Panel.TFrame")
+        right_shell = tk.Frame(summary, bg="#FFFFFF", highlightbackground="#D5DFEA", highlightthickness=1)
+        right_shell.pack(side="left", fill="both", expand=True)
+        tk.Frame(right_shell, bg="#0F766E", height=5).pack(fill="x")
+        right = ttk.Frame(right_shell, style="Card.TFrame", padding=18)
         right.pack(side="left", fill="both", expand=True)
 
         ttk.Label(left, text="Mis tareas recientes", style="PanelTitle.TLabel").pack(anchor="w")
+        ttk.Label(left, text="Prioridades y estatus recientes de ejecucion", style="PanelText.TLabel").pack(anchor="w", pady=(4, 0))
         task_tree = self._tree(left, ("title", "priority", "status"), ("Titulo", "Prioridad", "Estado"))
         for item in self.tasks[-8:]:
             task_tree.insert("", "end", values=(item.get("title"), item.get("priority"), item.get("status")))
 
         ttk.Label(right, text="Documentos recientes", style="PanelTitle.TLabel").pack(anchor="w")
+        ttk.Label(right, text="Documentos vinculados a tus operaciones recientes", style="PanelText.TLabel").pack(anchor="w", pady=(4, 0))
         doc_tree = self._tree(right, ("title", "category", "task"), ("Titulo", "Categoria", "Tarea"))
         for item in self.documents[-8:]:
             doc_tree.insert("", "end", values=(item.get("title"), item.get("category"), self._task_name(item.get("related_task_id", ""))))
 
     def _render_users(self) -> None:
-        top = ttk.Frame(self.content, style="Panel.TFrame")
+        top = ttk.Frame(self.content, style="Card.TFrame")
         top.pack(fill="x")
         ttk.Label(top, text="Administracion de usuarios", style="PanelTitle.TLabel").pack(anchor="w")
         ttk.Label(
@@ -376,7 +455,11 @@ class DashboardView(ttk.Frame):
         ttk.Label(self.content, text="Gestion de tareas", style="PanelTitle.TLabel").pack(anchor="w")
         ttk.Label(self.content, text="Usa opciones predefinidas para prioridad, estado, fecha y responsable.", style="PanelText.TLabel").pack(anchor="w", pady=(4, 12))
 
-        assignee_options = [user.get("username") for user in self.users] or ["Sin asignar"]
+        assignee_options = [
+            user.get("username")
+            for user in self.users
+            if user.get("role") != "Administrador"
+        ] or ["Sin asignar"]
         field_specs = [
             {"label": "Titulo", "key": "title", "kind": "entry"},
             {"label": "Descripcion", "key": "description", "kind": "entry"},
@@ -394,15 +477,15 @@ class DashboardView(ttk.Frame):
             command=lambda: self._create_task(entries),
         ).pack(anchor="e", pady=(0, 10))
 
+        tree = self._tree(self.content, ("title", "priority", "status", "due", "assigned"), ("Titulo", "Prioridad", "Estado", "Fecha limite", "Asignado"))
+        for item in self.tasks:
+            tree.insert("", "end", iid=item["id"], values=(item.get("title"), item.get("priority"), item.get("status"), item.get("due_date"), item.get("assigned_to")))
+
         actions = ttk.Frame(self.content, style="Panel.TFrame")
         actions.pack(fill="x", pady=(0, 10))
         ttk.Button(actions, text="Marcar en progreso", style="Secondary.TButton", command=lambda: self._update_task_status(tree, "En progreso")).pack(side="left", padx=(0, 8))
         ttk.Button(actions, text="Marcar completada", style="Secondary.TButton", command=lambda: self._update_task_status(tree, "Completada")).pack(side="left")
         ttk.Button(actions, text="Marcar bloqueada", style="Secondary.TButton", command=lambda: self._update_task_status(tree, "Bloqueada")).pack(side="left", padx=(8, 0))
-
-        tree = self._tree(self.content, ("title", "priority", "status", "due", "assigned"), ("Titulo", "Prioridad", "Estado", "Fecha limite", "Asignado"))
-        for item in self.tasks:
-            tree.insert("", "end", iid=item["id"], values=(item.get("title"), item.get("priority"), item.get("status"), item.get("due_date"), item.get("assigned_to")))
 
     def _render_documents(self) -> None:
         ttk.Label(self.content, text="Gestion documental", style="PanelTitle.TLabel").pack(anchor="w")
@@ -418,18 +501,50 @@ class DashboardView(ttk.Frame):
             {"label": "Categoria", "key": "category", "kind": "combobox", "values": self.document_categories, "width": 18},
             {"label": "Tarea relacionada", "key": "related_task_id", "kind": "combobox", "values": task_labels, "width": 22},
             {"label": "Archivo", "key": "file_path", "kind": "entry", "variable": self.file_path_var},
+            {"label": "Nombre del firmante", "key": "user_signature_name", "kind": "entry", "variable": tk.StringVar(value=self.session.full_name)},
         ]
         entries = self._render_responsive_fields(self.content, field_specs, self._validate_document_form, max_columns=3)
+
+        signature_shell = ttk.Frame(self.content, style="Card.TFrame")
+        signature_shell.pack(fill="x", pady=(0, 12))
+        ttk.Label(signature_shell, text="Firma manuscrita", style="PanelTitle.TLabel").pack(anchor="w")
+        ttk.Label(signature_shell, text="Dibuja la firma con el mouse dentro del recuadro.", style="PanelText.TLabel").pack(anchor="w", pady=(4, 10))
+
+        signature_pad = SignaturePad(
+            signature_shell,
+            width=520,
+            height=170,
+            on_change=lambda: self._validate_document_form(entries, True),
+        )
+        signature_pad.pack(anchor="w", fill="x")
+        pad_feedback = ttk.Label(signature_shell, text="Firma en el recuadro con el mouse.", style="ErrorFeedback.TLabel")
+        pad_feedback.pack(anchor="w", pady=(8, 6))
+        clear_actions = ttk.Frame(signature_shell, style="Card.TFrame")
+        clear_actions.pack(fill="x")
+        ttk.Button(
+            clear_actions,
+            text="Limpiar firma",
+            style="Secondary.TButton",
+            command=lambda: self._clear_signature(entries),
+        ).pack(anchor="w")
+
+        entries["signature_pad"] = {
+            "widget": signature_pad,
+            "var": tk.StringVar(),
+            "feedback": pad_feedback,
+            "type": "signature",
+        }
+        self._validate_document_form(entries, True)
 
         actions = ttk.Frame(self.content, style="Panel.TFrame")
         actions.pack(fill="x", pady=(0, 10))
         ttk.Button(actions, text="Buscar archivo", style="Secondary.TButton", command=lambda: self._select_file(entries)).pack(side="left")
         ttk.Button(actions, text="Registrar documento", style="Primary.TButton", command=lambda: self._create_document(entries, task_options)).pack(side="right")
 
-        tree = self._tree(self.content, ("title", "category", "task", "hash", "signature"), ("Titulo", "Categoria", "Tarea", "Hash", "Firma"))
+        tree = self._tree(self.content, ("title", "category", "task", "hash", "signature", "user_sign"), ("Titulo", "Categoria", "Tarea", "Hash", "Firma sistema", "Firmante"))
         for item in self.documents:
             signature_preview = "Firmado" if item.get("digital_signature") else "Pendiente"
-            tree.insert("", "end", values=(item.get("title"), item.get("category"), self._task_name(item.get("related_task_id", "")), (item.get("integrity_hash") or "")[:18], signature_preview))
+            tree.insert("", "end", values=(item.get("title"), item.get("category"), self._task_name(item.get("related_task_id", "")), (item.get("integrity_hash") or "")[:18], signature_preview, item.get("user_signature_name", "")))
 
     def _render_audit(self) -> None:
         ttk.Label(self.content, text="Registro de auditoria", style="PanelTitle.TLabel").pack(anchor="w")
@@ -510,6 +625,10 @@ class DashboardView(ttk.Frame):
             self.file_path_var.set(path)
             self._validate_document_form(entries, True)
 
+    def _clear_signature(self, entries) -> None:
+        entries["signature_pad"]["widget"].clear()
+        self._validate_document_form(entries, True)
+
     def _create_document(self, entries, task_options) -> None:
         if not self._validate_document_form(entries, True):
             messagebox.showwarning("SecureDesk", "Corrige los campos marcados antes de guardar.")
@@ -528,6 +647,8 @@ class DashboardView(ttk.Frame):
                 selected_task_id,
                 self._value(entries["file_path"]),
                 self._value(entries["notes"]),
+                self._value(entries["user_signature_name"]),
+                entries["signature_pad"]["widget"].export_svg(),
             )
             messagebox.showinfo("SecureDesk", "Documento registrado correctamente.")
             self.file_path_var.set("")

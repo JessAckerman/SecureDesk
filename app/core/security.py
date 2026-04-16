@@ -37,6 +37,20 @@ def validate_email(value: str) -> bool:
     return bool(EMAIL_RE.match((value or "").strip()))
 
 
+def validate_password_policy(password: str) -> tuple[bool, str]:
+    if len(password) < 8:
+        return False, "Minimo 8 caracteres."
+    if not any(char.isupper() for char in password):
+        return False, "Incluye una mayuscula."
+    if not any(char.islower() for char in password):
+        return False, "Incluye una minuscula."
+    if not any(char.isdigit() for char in password):
+        return False, "Incluye un numero."
+    if not any(char in "!@#$%^&*()-_=+[]{};:,.?" for char in password):
+        return False, "Incluye un simbolo."
+    return True, "Contrasena valida."
+
+
 def hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
     raw_salt = salt or secrets.token_hex(16)
     derived = hashlib.pbkdf2_hmac(

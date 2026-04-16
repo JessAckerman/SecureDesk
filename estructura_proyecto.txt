@@ -34,6 +34,7 @@ SecureDesk/
 |   |   |-- components/
 |   |   |   |-- __init__.py
 |   |   |   |-- logo_badge.py
+|   |   |   |-- signature_pad.py
 |   |   |   |-- sidebar.py
 |   |   |-- views/
 |   |   |   |-- __init__.py

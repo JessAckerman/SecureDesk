@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from google.cloud.firestore_v1.base_query import FieldFilter
+
 from app.core.security import hash_password, sanitize_text, utc_now, validate_email
 
 
@@ -89,13 +91,19 @@ class UserService:
         self._validate_password_strength(password)
 
         duplicated = (
-            self.db.collection("usuarios").where("username", "==", username).limit(1).stream()
+            self.db.collection("usuarios")
+            .where(filter=FieldFilter("username", "==", username))
+            .limit(1)
+            .stream()
         )
         if any(True for _ in duplicated):
             raise ValueError("El nombre de usuario ya existe.")
 
         duplicated_email = (
-            self.db.collection("usuarios").where("email", "==", email).limit(1).stream()
+            self.db.collection("usuarios")
+            .where(filter=FieldFilter("email", "==", email))
+            .limit(1)
+            .stream()
         )
         if any(True for _ in duplicated_email):
             raise ValueError("El correo electronico ya esta registrado.")

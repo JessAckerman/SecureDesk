@@ -35,6 +35,9 @@ Coleccion: documentos
 - digital_signature: string
 - signed_by: string
 - signature_algorithm: string
+- user_signature_name: string
+- user_signature_svg: string
+- user_signed_at: timestamp
 - notes: string
 - created_at: timestamp
 - updated_at: timestamp

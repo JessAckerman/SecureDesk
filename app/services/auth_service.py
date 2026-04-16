@@ -10,6 +10,7 @@ from app.core.security import (
     hash_password,
     sanitize_text,
     utc_now,
+    validate_password_policy,
     verify_password,
 )
 from app.core.session import UserSession
@@ -127,8 +128,9 @@ class AuthService:
     ) -> None:
         if not accept_privacy or not accept_usage:
             raise ValueError("Debes aceptar ambos avisos para continuar.")
-        if len(new_password) < 8:
-            raise ValueError("La nueva contrasena debe tener al menos 8 caracteres.")
+        password_ok, password_message = validate_password_policy(new_password)
+        if not password_ok:
+            raise ValueError(password_message)
 
         password_hash, salt = hash_password(new_password)
         self.db.collection("usuarios").document(session.user_id).update(
