@@ -25,5 +25,5 @@ class UserSession:
         self.last_activity = utc_now()
 
     def is_expired(self) -> bool:
-        timeout = timedelta(minutes=CONFIG.session_timeout_minutes)
+        timeout = timedelta(seconds=CONFIG.session_timeout_seconds)
         return utc_now() > self.last_activity + timeout
